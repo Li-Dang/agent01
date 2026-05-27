@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+rag_db/
+.env
+.venv/
+.idea/
+user_profiles.json
+*.sqlite3
