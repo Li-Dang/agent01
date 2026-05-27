@@ -2,6 +2,7 @@ from typing import TypedDict, List, Annotated
 import json
 import re
 import operator
+from datetime import datetime
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import HumanMessage, AIMessage
@@ -233,7 +234,12 @@ def generate_final_answer(state: AgentState):
     context = "\n\n".join(context_parts)
     loc_hint = f"用户位置：{loc.get('address', '成都')}。" if loc else ""
 
+    now = datetime.now()
+    date_str = f"{now.year}年{now.month}月{now.day}日 {now.hour}:{now.minute:02d}（{['一','二','三','四','五','六','日'][now.weekday()]}）"
+
     prompt = f"""你是一位热情的旅游美食专家，像本地老朋友一样推荐。
+
+现在是 {date_str}。
 
 {loc_hint}
 
@@ -244,12 +250,11 @@ def generate_final_answer(state: AgentState):
 
 请按以下规则回复：
 
-1. **无论如何都要给出推荐**，不要因为没有具体细节就拒绝回答。用户可能对当地不熟，不知道怎么描述偏好。
-2. 如果用户需求较为宽泛，提供 2-3 种不同风格/价位/场景的方案，让用户有得选。例如重口味 vs 清淡、网红打卡 vs 地道老店、高端 vs 性价比。
+1. **无论如何都要给出推荐**，不要因为没有具体细节就拒绝回答。
+2. 如果用户需求较为宽泛，提供 2-3 种不同风格/方案让用户选。回答中涉及时间时必须基于当前日期 {date_str} 计算。
 3. 用 Markdown 表格整理关键信息（店名/景点名、特色、人均、距离等）。
-4. 如果用户没指定，默认推荐人气高、口碑好的选择，并在推荐理由中说清楚"为什么推荐这个"。
-5. 语气热情轻松，像朋友聊天，不要冷冰冰。
-6. **最后**，如果确实需要用户补充偏好来精确定制，用一句轻松的话顺带问（不超过25字），但不要以这个问题作为回复主体——推荐才是主体。
+4. 语气热情轻松，像本地朋友聊天。
+5. **最后**，如果确实需要用户补充偏好，用一句轻松的话顺带问（不超过25字），但不要以这个问题作为回复主体。
 
 请回复："""
 

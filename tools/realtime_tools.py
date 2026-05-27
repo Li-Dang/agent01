@@ -16,19 +16,24 @@ CITY_ID_MAP = {
 
 
 def _get_city_id(city: str) -> str:
-    """将城市名转为和风天气 location ID，支持中文名直接查询"""
+    """将城市名转为和风天气 location ID。"""
+    # 标准化：去掉"市"后缀、括号内容等
+    clean = city.replace("市", "").replace("省", "").split("(")[0].split("（")[0].strip()
+    if clean in CITY_ID_MAP:
+        return CITY_ID_MAP[clean]
     if city in CITY_ID_MAP:
         return CITY_ID_MAP[city]
-    # 如果不是已知城市，尝试用城市搜索API
+    # 城市查询（自定义host可能不支持此端点）
     try:
         search_url = f"https://{QWEATHER_API_HOST}/v2/city/lookup"
-        resp = requests.get(search_url, params={"location": city, "key": QWEATHER_API_KEY}, timeout=10)
+        resp = requests.get(search_url, params={"location": clean, "key": QWEATHER_API_KEY}, timeout=5)
         data = resp.json()
         if data.get("code") == "200" and data.get("location"):
             return data["location"][0]["id"]
     except Exception:
         pass
-    return city  # 降级：直接返回城市名
+    # 最终降级：返回成都ID（安全默认值）
+    return "101270101"
 
 
 @tool
