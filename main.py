@@ -81,7 +81,7 @@ def run():
                         if node_name != "generate":
                             continue
                         for msg in node_output["messages"]:
-                            if node_name in user_facing_nodes and hasattr(msg, "content") and msg.content:
+                            if hasattr(msg, "content") and msg.content:
                                 print(f"\nAgent：{msg.content}")
         except Exception as e:
             print(f"\n[出错了] {e}")
