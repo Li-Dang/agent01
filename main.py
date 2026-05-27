@@ -77,13 +77,12 @@ def run():
                     if "user_profile" in node_output:
                         profile.update(node_output["user_profile"])
                     if "messages" in node_output:
+                        # 跳过中间节点的内部数据，只显示 generate 的结果
+                        if node_name != "generate":
+                            continue
                         for msg in node_output["messages"]:
-                            if hasattr(msg, "content") and msg.content:
-                                content = msg.content
-                                # 跳过内部检索数据
-                                if content.startswith("[知识库检索结果]") or content.startswith("[系统]"):
-                                    continue
-                                print(f"\nAgent：{content}")
+                            if node_name in user_facing_nodes and hasattr(msg, "content") and msg.content:
+                                print(f"\nAgent：{msg.content}")
         except Exception as e:
             print(f"\n[出错了] {e}")
             print("请重试或检查API配置。")

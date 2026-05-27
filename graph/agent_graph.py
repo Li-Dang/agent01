@@ -12,12 +12,10 @@ from tools.realtime_tools import get_weather, get_weather_forecast, check_ticket
 from tools.location_tools import detect_current_location, geocode_address, search_nearby_food, update_location
 
 
-# ---------- 状态定义 ----------
 class AgentState(TypedDict):
     messages: Annotated[List, operator.add]
     user_profile: dict
     plan: str
-    need_clarify: bool
     time_aware: bool
     intent: str
 
@@ -37,7 +35,6 @@ def _get_user_location(state: AgentState) -> dict:
 
 
 def _auto_locate(state: AgentState):
-    """自动定位并写入profile。"""
     profile = state.get("user_profile", {})
     try:
         result = detect_current_location.invoke({})
@@ -58,7 +55,6 @@ def _auto_locate(state: AgentState):
 
 
 def _extract_location_name(query: str) -> str:
-    """从"我在春熙路，附近3公里的火锅"中提取纯地点名。"""
     addr = query
     for kw in ["我现在在", "我在的", "位置在", "定位到", "我在"]:
         if kw in addr:
@@ -75,7 +71,6 @@ def _extract_location_name(query: str) -> str:
 
 
 def _parse_radius(query: str) -> int:
-    """从query中提取搜索半径（米），默认3000。"""
     m = re.search(r"(\d+)\s*(公里|km|千米|米|m)", query)
     if m:
         val = int(m.group(1))
@@ -85,7 +80,6 @@ def _parse_radius(query: str) -> int:
 
 
 def _parse_food_type(query: str) -> str:
-    """从query中提取想吃的类型。"""
     for ft in ["火锅", "川菜", "小吃", "串串", "烧烤", "面馆", "烤鱼",
                "冒菜", "麻辣烫", "甜品", "奶茶", "咖啡", "日料", "西餐"]:
         if ft in query:
@@ -119,18 +113,15 @@ def classify_intent(state: AgentState):
 
 
 def handle_location(state: AgentState):
-    """一站式位置处理：自动定位 → 周边搜索 → 位置更新。"""
     query = _last_user_query(state)
     profile = state.get("user_profile", {})
     results = []
 
-    # 确保有定位数据（没有就自动获取）
     if "location" not in profile or not profile["location"].get("latitude"):
         profile = _auto_locate(state)
 
     loc = profile.get("location", {})
 
-    # 用户明确告知位置 → 更新为精确坐标
     if any(kw in query for kw in ["我在", "我现在在"]):
         loc_name = _extract_location_name(query)
         if loc_name and len(loc_name) >= 2 and loc_name not in ("哪", "哪儿"):
@@ -142,12 +133,11 @@ def handle_location(state: AgentState):
                     "latitude": loc_data.get("latitude", loc.get("latitude")),
                     "longitude": loc_data.get("longitude", loc.get("longitude")),
                 }
-                loc = profile["location"]  # 更新loc引用
+                loc = profile["location"]
                 results.append(f"已定位到：{loc_data.get('address', loc_name)}")
             else:
                 results.append(f"未找到'{loc_name}'，使用当前定位")
 
-    # 用户问"我在哪" → 直接返回定位信息
     if any(kw in query for kw in ["我在哪", "我在哪儿", "当前位置", "定位"]) and not any(
         kw in query for kw in ["附近", "周边", "公里", "有什么"]
     ):
@@ -156,7 +146,6 @@ def handle_location(state: AgentState):
             f"（{loc.get('latitude')}, {loc.get('longitude')}）"
         )
 
-    # 周边搜索：附近/周边/XX公里 → 直接用当前定位搜
     if any(kw in query for kw in ["附近", "周边", "公里", "离我", "旁边", "就近"]):
         radius = _parse_radius(query)
         food_type = _parse_food_type(query)
@@ -215,7 +204,7 @@ def real_time_check(state: AgentState):
         ticket_info = check_tickets.invoke({"scenic": "大熊猫繁育研究基地"})
         results.append(f"景区信息：{ticket_info}")
 
-    if any(kw in query for kw in ["排队", "等位", "人多不多", "要等多久"]):
+    if any(kw in query for kw in ["等位", "要等多久", "人多不多"]):
         queue_info = check_restaurant_queue.invoke({"restaurant_name": "热门火锅店"})
         results.append(f"餐厅排队：{queue_info}")
 
@@ -225,35 +214,9 @@ def real_time_check(state: AgentState):
     return {"messages": [AIMessage(content="\n\n".join(results))]}
 
 
-def should_clarify(state: AgentState):
-    query = _last_user_query(state)
-    intent = state.get("intent", "")
-    # 位置查询和实时查询不需要澄清
-    if intent in ("位置查询", "实时查询"):
-        return {"need_clarify": False}
-
-    llm = get_llm(temperature=0)
-    prompt = f"""用户需求："{query}"
-如果用户需求中缺少关键信息（如口味、位置、预算、日期、人数等），回答"需要澄清"并说明缺少什么。
-如果需求已经很具体，回答"直接回答"。
-
-判断："""
-    judge = llm.invoke(prompt).content.strip()
-    return {"need_clarify": "需要澄清" in judge}
-
-
-def clarify_question(state: AgentState):
-    query = _last_user_query(state)
-    llm = get_llm(temperature=0.7)
-    prompt = f"""用户说："{query}"
-请提出1-2个友好的追问，帮助用户细化需求（口味偏好、位置区域、预算范围、出行时间等），总共不超过50字。"""
-    question = llm.invoke(prompt).content.strip()
-    return {"messages": [AIMessage(content=f"🤔 {question}")]}
-
-
 def generate_final_answer(state: AgentState):
     query = _last_user_query(state)
-    llm = get_llm(temperature=0.3)
+    llm = get_llm(temperature=0.7)
     loc = _get_user_location(state)
 
     context_parts = []
@@ -261,28 +224,34 @@ def generate_final_answer(state: AgentState):
         if isinstance(msg, HumanMessage):
             context_parts.append(f"[用户] {msg.content}")
         elif isinstance(msg, AIMessage):
-            context_parts.append(f"[系统] {msg.content}")
+            content = msg.content
+            # 截断过长的检索结果，避免上下文爆炸
+            if len(content) > 2000:
+                content = content[:2000] + "\n...(结果已截断)"
+            context_parts.append(f"[参考数据] {content}")
 
     context = "\n\n".join(context_parts)
-    loc_hint = f"用户当前在：{loc.get('address', '成都')}（{loc.get('latitude')}, {loc.get('longitude')}）。" if loc else ""
+    loc_hint = f"用户位置：{loc.get('address', '成都')}。" if loc else ""
 
-    prompt = f"""你是一位资深的旅游美食专家。根据以下参考信息，为用户提供专业建议。
+    prompt = f"""你是一位热情的旅游美食专家，像本地老朋友一样推荐。
 
 {loc_hint}
 
-要求：
-1. 使用Markdown格式，关键信息用表格呈现
-2. 如果涉及行程，注明时间段和预估花费
-3. 如果有天气信息，加入出行提醒
-4. 推荐时说明理由和距离，让用户理解为什么值得去
-5. 语气热情友好，像本地朋友推荐
-
-参考信息：
+参考数据（包含搜索结果/知识库/天气等）：
 {context}
 
-用户需求：{query}
+原始需求：{query}
 
-请回答："""
+请按以下规则回复：
+
+1. **无论如何都要给出推荐**，不要因为没有具体细节就拒绝回答。用户可能对当地不熟，不知道怎么描述偏好。
+2. 如果用户需求较为宽泛，提供 2-3 种不同风格/价位/场景的方案，让用户有得选。例如重口味 vs 清淡、网红打卡 vs 地道老店、高端 vs 性价比。
+3. 用 Markdown 表格整理关键信息（店名/景点名、特色、人均、距离等）。
+4. 如果用户没指定，默认推荐人气高、口碑好的选择，并在推荐理由中说清楚"为什么推荐这个"。
+5. 语气热情轻松，像朋友聊天，不要冷冰冰。
+6. **最后**，如果确实需要用户补充偏好来精确定制，用一句轻松的话顺带问（不超过25字），但不要以这个问题作为回复主体——推荐才是主体。
+
+请回复："""
 
     answer = llm.invoke(prompt).content.strip()
     return {"plan": answer, "messages": [AIMessage(content=answer)]}
@@ -295,8 +264,6 @@ builder.add_node("classify", classify_intent)
 builder.add_node("locate", handle_location)
 builder.add_node("retrieve", retrieve_knowledge)
 builder.add_node("realtime", real_time_check)
-builder.add_node("clarify_check", should_clarify)
-builder.add_node("ask_clarify", clarify_question)
 builder.add_node("generate", generate_final_answer)
 
 builder.set_entry_point("classify")
@@ -317,17 +284,10 @@ builder.add_conditional_edges(
     {"locate": "locate", "realtime": "realtime", "retrieve": "retrieve"},
 )
 
-builder.add_edge("locate", "clarify_check")
-builder.add_edge("retrieve", "clarify_check")
-builder.add_edge("realtime", "clarify_check")
-
-builder.add_conditional_edges(
-    "clarify_check",
-    lambda s: "ask_clarify" if s.get("need_clarify", False) else "generate",
-    {"ask_clarify": "ask_clarify", "generate": "generate"},
-)
-
-builder.add_edge("ask_clarify", END)
+# 所有节点都直接进入 generate（不再有澄清拦截）
+builder.add_edge("locate", "generate")
+builder.add_edge("retrieve", "generate")
+builder.add_edge("realtime", "generate")
 builder.add_edge("generate", END)
 
 memory = MemorySaver()
