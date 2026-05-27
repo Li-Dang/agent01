@@ -1,7 +1,13 @@
 import sys
 import io
 import json
+import os
 import uuid
+
+# 最源头：禁HuggingFace联网 + 屏蔽所有Python警告
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["PYTHONWARNINGS"] = "ignore"
+
 from langchain_core.messages import HumanMessage
 from graph.agent_graph import graph
 from memory.user_profile import load_profile, save_profile
@@ -77,12 +83,9 @@ def run():
                     if "user_profile" in node_output:
                         profile.update(node_output["user_profile"])
                     if "messages" in node_output:
-                        # 跳过中间节点的内部数据，只显示 generate 的结果
-                        if node_name != "generate":
-                            continue
-                        for msg in node_output["messages"]:
-                            if hasattr(msg, "content") and msg.content:
-                                print(f"\nAgent：{msg.content}")
+                        # generate 节点的内容已通过流式回调实时输出，无需重复打印
+                        # 其他节点不打印（中间数据）
+                        pass
         except Exception as e:
             print(f"\n[出错了] {e}")
             print("请重试或检查API配置。")

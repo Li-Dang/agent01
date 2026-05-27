@@ -16,8 +16,7 @@ LLM_BASE_URL = DEEPSEEK_BASE_URL
 # ---------- Embedding 模型 ----------
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "shibing624/text2vec-base-chinese")
 
-# HuggingFace 配置（模型已缓存，无需联网验证）
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
+# HuggingFace 镜像（国内访问加速）
 HF_ENDPOINT = os.getenv("HF_ENDPOINT", "https://hf-mirror.com")
 if HF_ENDPOINT:
     os.environ["HF_ENDPOINT"] = HF_ENDPOINT

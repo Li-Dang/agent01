@@ -216,7 +216,7 @@ def real_time_check(state: AgentState):
 
 def generate_final_answer(state: AgentState):
     query = _last_user_query(state)
-    llm = get_llm(temperature=0.7)
+    llm = get_llm(temperature=0.7, streaming=True)
     loc = _get_user_location(state)
 
     context_parts = []
